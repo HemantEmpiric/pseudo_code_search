@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Finder</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .search-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+        .search-box {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .restaurant-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .restaurant-card:hover {
+            transform: translateY(-5px);
+        }
+        .restaurant-profile {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .vibe-tag {
+            background: #e9ecef;
+            color: #495057;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin: 0.25rem;
+            display: inline-block;
+        }
+        .amenity-icon {
+            font-size: 1.2rem;
+            margin-right: 0.5rem;
+        }
+        .loading {
+            display: none;
+        }
+        .error-message {
+            display: none;
+            color: #dc3545;
+            margin-top: 1rem;
+        }
+        .hours-card {
+            border-left: 4px solid #007bff;
+        }
+        .hours-card.today {
+            border-left-color: #28a745;
+        }
+        .hours-card.closed {
+            border-left-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <div class="container">
+            <!-- Search Section -->
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <div class="search-box text-center">
+                        <h1 class="mb-4">
+                            <i class="fas fa-utensils text-primary me-3"></i>
+                            Restaurant Finder
+                        </h1>
+                        <form id="searchForm" class="mb-4">
+                            <div class="input-group input-group-lg">
+                                <input type="text" 
+                                       id="searchQuery" 
+                                       class="form-control" 
+                                       placeholder="Search for restaurants, cuisines, or locations..."
+                                       required>
+                                <button class="btn btn-primary" type="submit">
+                                    <i class="fas fa-search me-2"></i>Search
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Loading Spinner -->
+                        <div id="loading" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Searching for restaurants...</p>
+                        </div>
+                        
+                        <!-- Error Message -->
+                        <div id="errorMessage" class="error-message alert alert-danger"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Results -->
+            <div id="searchResults" class="row mt-4" style="display: none;">
+                <div class="col-12">
+                    <h3 class="text-white mb-3">Search Results</h3>
+                    <div id="restaurantsList" class="row g-3">
+                        <!-- Restaurant cards will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Restaurant Profile -->
+            <div id="restaurantProfile" class="row mt-4" style="display: none;">
+                <div class="col-12">
+                    <div class="restaurant-profile">
+                        <button id="backToSearch" class="btn btn-outline-secondary mb-3">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Search
+                        </button>
+                        <div id="restaurantDetails">
+                            <!-- Restaurant details will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Main application logic
+        class RestaurantFinder {
+            constructor() {
+                this.currentQuery = '';
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('searchForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.handleSearch();
+                });
+
+                document.getElementById('backToSearch').addEventListener('click', () => {
+                    this.showSearchResults();
+                });
+            }
+
+            async handleSearch() {
+                const query = document.getElementById('searchQuery').value.trim();
+                
+                if (!query) {
+                    this.showError('Please enter a search query');
+                    return;
+                }
+
+                this.currentQuery = query;
+                this.showLoading(true);
+                this.hideError();
+
+                try {
+                    const response = await fetch('/search/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: query })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.displaySearchResults(data.results);
+                    } else {
+                        this.showError(data.error || 'Search failed');
+                    }
+                } catch (error) {
+                    this.showError('Network error occurred');
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            async handleRestaurantSelect(placeId) {
+                this.showLoading(true);
+                this.hideError();
+
+                try {
+                    const response = await fetch(`/details/?place_id=${placeId}`);
+                    const restaurant = await response.json();
+
+                    if (response.ok) {
+                        this.displayRestaurantProfile(restaurant);
+                    } else {
+                        this.showError(restaurant.error || 'Failed to load restaurant details');
+                    }
+                } catch (error) {
+                    this.showError('Network error occurred');
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            displaySearchResults(results) {
+                const resultsContainer = document.getElementById('searchResults');
+                const restaurantsList = document.getElementById('restaurantsList');
+
+                if (results.length === 0) {
+                    restaurantsList.innerHTML = '<div class="col-12"><p class="text-white text-center">No restaurants found</p></div>';
+                } else {
+                    restaurantsList.innerHTML = results.map(restaurant => `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card restaurant-card h-100" onclick="app.handleRestaurantSelect('${restaurant.place_id}')">
+                                <div class="card-body">
+                                    <h5 class="card-title">${restaurant.name}</h5>
+                                    <p class="card-text text-muted">
+                                        <i class="fas fa-map-marker-alt me-2"></i>${restaurant.address}
+                                    </p>
+                                    ${restaurant.rating ? `
+                                        <div class="d-flex align-items-center">
+                                            <div class="text-warning me-2">
+                                                ${'★'.repeat(Math.floor(restaurant.rating))}
+                                                ${restaurant.rating % 1 >= 0.5 ? '☆' : ''}
+                                            </div>
+                                            <span class="text-muted">${restaurant.rating}</span>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                this.showSearchResults();
+            }
+
+            displayRestaurantProfile(restaurant) {
+                const profileContainer = document.getElementById('restaurantProfile');
+                const detailsContainer = document.getElementById('restaurantDetails');
+
+                detailsContainer.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h2 class="mb-3">${restaurant.name}</h2>
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-map-marker-alt me-2"></i>${restaurant.address}
+                            </p>
+                            
+                            ${restaurant.contact ? `
+                                <p class="mb-2">
+                                    <i class="fas fa-phone me-2"></i>${restaurant.contact}
+                                </p>
+                            ` : ''}
+                            
+                            ${restaurant.website ? `
+                                <p class="mb-3">
+                                    <i class="fas fa-globe me-2"></i>
+                                    <a href="${restaurant.website}" target="_blank">Visit Website</a>
+                                </p>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="col-md-4">
+                            ${restaurant.images && restaurant.images.length > 0 ? `
+                                <img src="${restaurant.images[0]}" class="img-fluid rounded" alt="${restaurant.name}">
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    ${restaurant.vibes && restaurant.vibes.length > 0 ? `
+                        <div class="mt-4">
+                            <h5>Vibes</h5>
+                            <div class="mb-3">
+                                ${restaurant.vibes.map(vibe => `<span class="vibe-tag">${vibe}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${restaurant.amenities ? `
+                        <div class="mt-4">
+                            <h5>Amenities</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    ${this.renderAmenities(restaurant.amenities)}
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${restaurant.operating_hours ? `
+                        <div class="mt-4">
+                            <h5>Operating Hours</h5>
+                            <div class="mb-3">
+                                <small class="text-muted mb-2 d-block">
+                                    <i class="fas fa-clock me-1"></i>
+                                    Current time: <span id="currentTime"></span>
+                                </small>
+                                ${this.renderOperatingHours(restaurant.operating_hours)}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${restaurant.summaries ? `
+                        <div class="mt-4">
+                            <h5>Summary</h5>
+                            <p class="text-muted">${restaurant.summaries.generativeSummary || restaurant.summaries.reviewSummary || 'No summary available'}</p>
+                        </div>
+                    ` : ''}
+                `;
+
+                this.showRestaurantProfile();
+            }
+
+            renderAmenities(amenities) {
+                const amenityIcons = {
+                    dineIn: 'fas fa-utensils',
+                    delivery: 'fas fa-truck',
+                    takeout: 'fas fa-shopping-bag',
+                    outdoorSeating: 'fas fa-umbrella-beach',
+                    liveMusic: 'fas fa-music',
+                    goodForGroups: 'fas fa-users',
+                    goodForChildren: 'fas fa-baby',
+                    servesDinner: 'fas fa-moon',
+                    servesLunch: 'fas fa-sun',
+                    servesWine: 'fas fa-wine-glass-alt'
+                };
+
+                return Object.entries(amenities)
+                    .filter(([key, value]) => value === true)
+                    .map(([key, value]) => `
+                        <div class="mb-2">
+                            <i class="${amenityIcons[key] || 'fas fa-check'} amenity-icon text-success"></i>
+                            ${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </div>
+                    `).join('');
+            }
+
+            renderOperatingHours(hours) {
+                let html = '';
+                
+                // Show today's hours prominently at the top
+                if (hours.today_hours) {
+                    const dayNames = hours.day_names || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    const todayName = dayNames[hours.today];
+                    const statusClass = hours.open_now ? 'text-success' : 'text-danger';
+                    const statusText = hours.open_now ? 'OPEN NOW' : 'CLOSED';
+                    
+                    html += `
+                        <div class="card mb-3 border-primary ${hours.open_now ? 'hours-card today' : 'hours-card closed'}">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-calendar-day me-2"></i>
+                                    Today (${todayName})
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${hours.today_hours}</strong>
+                                        ${hours.current_period ? `
+                                            <br><small class="text-muted">
+                                                ${hours.current_period.open} - ${hours.current_period.close}
+                                            </small>
+                                        ` : ''}
+                                    </div>
+                                    <span class="badge ${statusClass} fs-6">${statusText}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Show all days
+                if (hours.weekday_text && hours.weekday_text.length > 0) {
+                    html += '<h6 class="mb-2">All Hours</h6>';
+                    html += '<div class="row">';
+                    hours.weekday_text.forEach((day, index) => {
+                        const isToday = index === hours.today;
+                        const dayNames = hours.day_names || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                        const dayName = dayNames[index];
+                        
+                        html += `
+                            <div class="col-md-6 mb-2">
+                                <div class="${isToday ? 'fw-bold text-primary border-start border-primary ps-2' : ''}">
+                                    <small class="text-muted">${dayName}:</small><br>
+                                    ${day}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                }
+                
+                return html || '<p class="text-muted">Hours not available</p>';
+            }
+
+            showLoading(show) {
+                document.getElementById('loading').style.display = show ? 'block' : 'none';
+            }
+
+            showError(message) {
+                const errorElement = document.getElementById('errorMessage');
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+            }
+
+            hideError() {
+                document.getElementById('errorMessage').style.display = 'none';
+            }
+
+            showSearchResults() {
+                document.getElementById('searchResults').style.display = 'block';
+                document.getElementById('restaurantProfile').style.display = 'none';
+            }
+
+            showRestaurantProfile() {
+                document.getElementById('searchResults').style.display = 'none';
+                document.getElementById('restaurantProfile').style.display = 'block';
+                
+                // Update current time
+                this.updateCurrentTime();
+                // Update time every minute
+                setInterval(() => this.updateCurrentTime(), 60000);
+            }
+            
+            updateCurrentTime() {
+                const timeElement = document.getElementById('currentTime');
+                if (timeElement) {
+                    const now = new Date();
+                    timeElement.textContent = now.toLocaleTimeString();
+                }
+            }
+        }
+
+        // Initialize the application
+        const app = new RestaurantFinder();
+    </script>
+</body>
+</html>
